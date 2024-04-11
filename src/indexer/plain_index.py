@@ -4,11 +4,11 @@ import collections
 import itertools
 
 from dataclasses import dataclass
-from typing import Mapping, Sequence, Tuple
+from typing import Mapping, Sequence, Set, Tuple
 
 
 WORD_PATTERN = re.compile(r"(?u)\b\w\w+\b")
-STOP_WORDS = {
+STOP_WORDS_STRICT = {
     # articles
     "a",
     "an",
@@ -51,17 +51,24 @@ STOP_WORDS = {
     "could",
 }
 
+STOP_WORDS = {
+    # articles
+    "a",
+    "an",
+    "the",
+}
+
 
 def read_doc(corpus_dir: pathlib.Path, doc_id: str):
     with open(corpus_dir / f"{doc_id}.txt", encoding="utf-8") as f:
         return f.read()
 
 
-def build_collocations(text: str):
+def build_collocations(text: str, stop_words: Set[str]):
     text = text.lower()
     words = tuple(
         filter(
-            lambda x: x not in STOP_WORDS,
+            lambda x: x not in stop_words,
             map(lambda x: x.group(), WORD_PATTERN.finditer(text)),
         )
     )

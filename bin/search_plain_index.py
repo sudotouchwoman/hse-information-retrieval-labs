@@ -25,7 +25,12 @@ def init_logging():
 def build_plain_index(corpus_dir: pathlib.Path, doc_ids: Sequence[str]):
     def doc_words(doc_id: str):
         doc_content = plain_index.read_doc(corpus_dir, doc_id)
-        unigrams, bigrams = plain_index.build_collocations(doc_content)
+
+        unigrams, bigrams = plain_index.build_collocations(
+            doc_content,
+            plain_index.STOP_WORDS,
+        )
+
         return plain_index.DocPlainIndex(doc_id, unigrams=unigrams, bigrams=bigrams)
 
     return tuple(
@@ -47,14 +52,22 @@ def search_plain_index(
 ) -> Sequence[str]:
     words = tuple(query.split())
 
-    if len(words) > 2:
-        raise ValueError("only single-word and bigram search is supported")
-
     if len(words) == 2:
         return [i.doc_id for i in idx if i.has_bigram(words)]
 
-    (word,) = words
-    return [i.doc_id for i in idx if i.has_word(word)]
+    if len(words) == 1:
+        (word,) = words
+        return [i.doc_id for i in idx if i.has_word(word)]
+
+    # try a simple approach to multi-word search:
+    # set intersection
+    word, *words = words
+    docs = {i.doc_id for i in idx if i.has_word(word)}
+
+    for word in words:
+        docs = docs.intersection((i.doc_id for i in idx if i.has_word(word)))
+
+    return tuple(docs)
 
 
 @click.command()
