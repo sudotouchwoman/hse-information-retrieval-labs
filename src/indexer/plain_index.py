@@ -1,3 +1,4 @@
+import math
 import pathlib
 import re
 import collections
@@ -5,6 +6,11 @@ import itertools
 
 from dataclasses import dataclass
 from typing import Mapping, Sequence, Set, Tuple
+
+from rich import progress
+from nltk import stem
+
+from urllib import parse
 
 
 WORD_PATTERN = re.compile(r"(?u)\b\w\w+\b")
@@ -52,10 +58,31 @@ STOP_WORDS_STRICT = {
 }
 
 STOP_WORDS = {
-    # articles
-    "a",
-    "an",
     "the",
+    "be",
+    "to",
+    "of",
+    "and",
+    "a",
+    "in",
+    "that",
+    "have",
+    "i",
+    "it",
+    "for",
+    "not",
+    "on",
+    "with",
+    "he",
+    "as",
+    "you",
+    "do",
+    "at",
+    "this",
+    "but",
+    "his",
+    "by",
+    "from",
 }
 
 
@@ -64,55 +91,91 @@ def read_doc(corpus_dir: pathlib.Path, doc_id: str):
         return f.read()
 
 
-def build_collocations(text: str, stop_words: Set[str]):
-    text = text.lower()
-    words = tuple(
-        filter(
-            lambda x: x not in stop_words,
-            map(lambda x: x.group(), WORD_PATTERN.finditer(text)),
-        )
+def preprocess(text: str, stopwords: Set[str], stemmer):
+    words = filter(
+        lambda x: x not in stopwords,
+        map(
+            lambda x: x.group(),
+            WORD_PATTERN.finditer(
+                text.lower(),
+            ),
+        ),
     )
 
+    words = map(stemmer.stem, words)
+    return tuple(words)
+
+
+def build_collocations(words: Sequence[str]):
     # build unigram index
     unigrams = collections.defaultdict(int)
     for w in words:
         unigrams[w] += 1
 
-    # normalize unigrams
-    for ug in unigrams:
-        unigrams[ug] /= len(unigrams)
+    # convert unigram counts to frequencies
+    unigrams = {k: v / len(unigrams) for k, v in unigrams.items() if v > 2}
 
     # build bigram index
     bigrams = collections.defaultdict(int)
     for word, collocant in itertools.pairwise(words):
         bigrams[(word, collocant)] += 1
 
-    # normalize bigrams
-    for bg in bigrams:
-        bigrams[bg] /= len(bigrams)
+    # convert bigram counts to frequencies
+    bigrams = {k: v / len(bigrams) for k, v in bigrams.items() if v > 2}
 
-    def bigram_mi(pair):
+    def mutual_information(pair):
         x, y = pair
-        return bigrams[pair] / unigrams[x] * unigrams[y]
+        return math.log(bigrams[pair] / unigrams[x] / unigrams[y])
 
-    # filter bigram index by mutual information
-    mi_index = [(p, bigram_mi(p)) for p in bigrams]
-    mi_index.sort(key=lambda x: x[-1])
-
-    cutoff = len(mi_index) // 10
-    bigram_collocations = {k: v for k, v in mi_index[-cutoff:]}
-
+    bigram_collocations = {b: mutual_information(b) for b in bigrams}
     return unigrams, bigram_collocations
 
 
 @dataclass(frozen=True, slots=True)
 class DocPlainIndex:
     doc_id: str
+    doc_name: str
     unigrams: Mapping[str, float]
     bigrams: Mapping[Tuple[str, str], float]
 
-    def has_word(self, word: str):
-        return word in self.unigrams
+    def tf_score(self, term: str):
+        return self.unigrams.get(term, None)
 
-    def has_bigram(self, bigram: Tuple[str, str]):
-        return bigram in self.bigrams
+    def bigram_mi_score(self, bigram: Tuple[str, str]):
+        return self.bigrams.get(bigram, None)
+
+
+def default_stemmer():
+    return stem.SnowballStemmer("english")
+
+
+def build_plain_index(corpus_dir: pathlib.Path, doc_ids: Mapping[str, str]):
+    stemmer = default_stemmer()
+
+    def doc_words(doc_id: str, doc_name: str):
+        doc_content = read_doc(corpus_dir, doc_id)
+
+        words = preprocess(
+            doc_content,
+            STOP_WORDS,
+            stemmer,
+        )
+
+        unigrams, bigrams = build_collocations(words)
+
+        return DocPlainIndex(
+            doc_id,
+            doc_name=parse.unquote(doc_name),
+            unigrams=unigrams,
+            bigrams=bigrams,
+        )
+
+    return {
+        d: words
+        for d, words in progress.track(
+            ((d, doc_words(d, name)) for d, name in doc_ids.items()),
+            description="Building plain doc index",
+            total=len(doc_ids),
+            show_speed=True,
+        )
+    }
