@@ -6,3 +6,5 @@ requests
 rich
 beautifulsoup4
 lxml
+faiss-cpu
+sentence-transformers
