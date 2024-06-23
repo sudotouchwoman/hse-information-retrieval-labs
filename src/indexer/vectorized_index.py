@@ -91,8 +91,8 @@ class VectorizedIndex:
         return top_k_docs
 
 
-def load_embedder(name: str):
-    return sentence_transformers.SentenceTransformer(name, local_files_only=True)
+def load_embedder(name: str, download=False):
+    return sentence_transformers.SentenceTransformer(name, local_files_only=not download)
 
 
 def create_index(dim: int, num_clusters: int):

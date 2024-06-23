@@ -29,8 +29,20 @@ l = init_logging()
 @click.option("--preprocess", help="Build vector index from scratch", type=bool)
 @click.option("--max-docs", help="Maximal number of docs to index", type=int)
 @click.option("-k", help="Top k docs to query", type=int, default=5)
-def main(data_dir, preprocess, max_docs, k):
+@click.option("--download", help="Download embedder", type=bool, default=False)
+def main(data_dir, preprocess, max_docs, k, download):
     data_dir = pathlib.Path(data_dir)
+    default_model_name = "all-MiniLM-L6-v2"
+    model_path = data_dir / "encoders" / default_model_name
+
+    if download:
+        name = "all-MiniLM-L6-v2"
+        model = vectorized_index.load_embedder(
+            str(model_path),
+            download=True,
+        )
+        model.save(str(data_dir / "encoders" / name))
+        return
 
     corpus_index = data_dir / "index.json"
     df_corpus_index = pd.read_json(corpus_index, lines=True).set_index("uuid")
@@ -42,13 +54,7 @@ def main(data_dir, preprocess, max_docs, k):
 
     n = len(doc_ids)
 
-    # NOTE: model should be loaded prior to the test and saved in data_dir:
-    # name = "all-MiniLM-L6-v2"
-    # model = sentence_transformers.SentenceTransformer(name)
-    # model.save(data_dir / "encoders" / name)
-
-    default_model_name = "all-MiniLM-L6-v2"
-    model = vectorized_index.load_embedder(str(data_dir / "encoders" / default_model_name))
+    model = vectorized_index.load_embedder(str(model_path))
 
     dim = model.get_sentence_embedding_dimension()
     num_clusters = int(np.sqrt(n))
@@ -89,7 +95,7 @@ def main(data_dir, preprocess, max_docs, k):
 
                 l.info(reply)
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         l.info("exiting")
 
 
