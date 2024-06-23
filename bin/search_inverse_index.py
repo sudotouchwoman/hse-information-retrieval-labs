@@ -1,10 +1,8 @@
 #! /usr/bin/env python
 
-from dataclasses import dataclass
 import logging
 import logging.config
 
-from typing import Callable, Mapping, Sequence
 import pathlib
 
 import click
